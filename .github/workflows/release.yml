@@ -1,0 +1,124 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  PRODUCT_NAME: BuildNET
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: arm64
+            asset_ext: tar.gz
+          - goos: darwin
+            goarch: amd64
+            asset_ext: tar.gz
+          - goos: linux
+            goarch: amd64
+            asset_ext: tar.gz
+          - goos: linux
+            goarch: arm64
+            asset_ext: tar.gz
+          - goos: windows
+            goarch: amd64
+            asset_ext: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive version from tag
+        id: ver
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+
+      - name: Build buildnet
+        shell: bash
+        run: |
+          mkdir -p dist/bin
+          OUT="dist/bin/buildnet"
+          if [ "${{ matrix.goos }}" = "windows" ]; then OUT="${OUT}.exe"; fi
+
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 \
+            go build -trimpath -ldflags "-s -w -X main.version=${VERSION} -X main.product=${PRODUCT_NAME}" \
+            -o "${OUT}" ./hub/cmd/buildnet
+
+      - name: Package asset
+        shell: bash
+        run: |
+          mkdir -p dist/artifacts
+          BASENAME="buildnet_${{ matrix.goos }}_${{ matrix.goarch }}"
+          STAGE="dist/stage/${BASENAME}"
+          mkdir -p "${STAGE}"
+
+          cp dist/bin/buildnet* "${STAGE}/"
+
+          if [ "${{ matrix.asset_ext }}" = "zip" ]; then
+            (cd dist/stage && zip -r "../artifacts/${BASENAME}.zip" "${BASENAME}")
+          else
+            (cd dist/stage && tar -czf "../artifacts/${BASENAME}.tar.gz" "${BASENAME}")
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/artifacts/*
+
+  finalize:
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/all
+
+      - name: Flatten artifacts
+        shell: bash
+        run: |
+          mkdir -p dist/release
+          find dist/all -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} dist/release/ \;
+          ls -la dist/release
+
+      - name: Generate SHA256SUMS
+        shell: bash
+        run: |
+          (cd dist/release && sha256sum * > SHA256SUMS)
+          echo "---- SHA256SUMS ----"
+          cat dist/release/SHA256SUMS
+
+      - name: Create GitHub Release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/release/*.tar.gz
+            dist/release/*.zip
+            dist/release/SHA256SUMS
+          generate_release_notes: true
