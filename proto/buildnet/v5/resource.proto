@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package buildnet.v5;
+
+option go_package = "github.com/buildnethq/buildnet/hub/gen/buildnet/v5;buildnetv5";
+
+import "buildnet/v5/common.proto";
+
+enum ResourceVisibility {
+  RESOURCE_VISIBILITY_UNSPECIFIED = 0;
+  RESOURCE_VISIBILITY_LOCAL = 1;
+  RESOURCE_VISIBILITY_ORG = 2;
+  RESOURCE_VISIBILITY_FEDERATION = 3;
+  RESOURCE_VISIBILITY_PUBLIC = 4;
+}
+
+message ResourceDescriptor {
+  bytes resource_id = 1;
+  string type_uri = 2;
+  bytes provider_node_id = 3;
+
+  string name = 4;
+  string version = 5;
+
+  map<string,string> interfaces = 6;
+  map<string,string> constraints = 7;
+
+  uint32 est_latency_ms = 8;
+  double est_throughput = 9;
+  double est_cost = 10;
+
+  ResourceVisibility visibility = 11;
+  string trust_tier = 12;
+  map<string,string> tags = 13;
+
+  bytes capabilities_json = 14;
+}
+
+message ResourceEvent {
+  bytes event_id = 1;
+  HybridLogicalTime hlc = 2;
+
+  oneof change {
+    ResourceDescriptor upsert = 10;
+    bytes tombstone_resource_id = 11;
+  }
+}
+
+service ResourceService {
+  rpc UpsertResources(UpsertResourcesRequest) returns (UpsertResourcesResponse);
+  rpc ListResources(ListResourcesRequest) returns (ListResourcesResponse);
+  rpc WatchResources(WatchResourcesRequest) returns (stream ResourceEvent);
+}
+
+message UpsertResourcesRequest {
+  bytes provider_node_id = 1;
+  repeated ResourceEvent events = 2;
+}
+
+message UpsertResourcesResponse {
+  uint32 accepted = 1;
+  uint32 rejected = 2;
+}
+
+message ListResourcesRequest {
+  string type_uri_prefix = 1;
+  bytes provider_node_id = 2;
+  ResourceVisibility min_visibility = 3;
+}
+
+message ListResourcesResponse {
+  repeated ResourceDescriptor resources = 1;
+}
+
+message WatchResourcesRequest {
+  string type_uri_prefix = 1;
+  ResourceVisibility min_visibility = 2;
+}

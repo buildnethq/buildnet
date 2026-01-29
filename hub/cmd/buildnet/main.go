@@ -3,6 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	buildnetv5connect "github.com/buildnethq/buildnet/hub/gen/buildnet/v5/buildnetv5connect"
+	"github.com/buildnethq/buildnet/hub/internal/ledger"
+	"github.com/buildnethq/buildnet/hub/internal/resources"
+	"github.com/buildnethq/buildnet/hub/internal/transport"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 	"log"
 	"net/http"
 	"os"
@@ -61,6 +67,15 @@ func hubStart() {
 	addr := "127.0.0.1:7444"
 	mux := http.NewServeMux()
 
+	// --- alpha protocol stubs ---
+	transportSvc := transport.New()
+	ledgerSvc := ledger.New()
+	resourceSvc := resources.New()
+
+	mux.Handle(buildnetv5connect.NewTransportServiceHandler(transportSvc))
+	mux.Handle(buildnetv5connect.NewLedgerServiceHandler(ledgerSvc))
+	mux.Handle(buildnetv5connect.NewResourceServiceHandler(resourceSvc))
+
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		resp := map[string]any{
 			"ok":      true,
@@ -74,7 +89,7 @@ func hubStart() {
 
 	s := &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           h2c.NewHandler(mux, &http2.Server{}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

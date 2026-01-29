@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package buildnet.v5;
+
+option go_package = "github.com/buildnethq/buildnet/hub/gen/buildnet/v5;buildnetv5";
+
+import "buildnet/v5/common.proto";
+
+enum EventKind {
+  EVENT_KIND_UNSPECIFIED = 0;
+
+  EVENT_JOIN = 1;
+  EVENT_HEARTBEAT = 2;
+  EVENT_POLICY_CHANGE = 3;
+  EVENT_RESOURCE_UPSERT = 4;
+  EVENT_RESOURCE_REMOVE = 5;
+
+  EVENT_JOB_SUBMIT = 10;
+  EVENT_ACTION_SCHEDULED = 11;
+  EVENT_ACTION_STARTED = 12;
+  EVENT_ACTION_FINISHED = 13;
+  EVENT_ACTION_CACHED_HIT = 14;
+
+  EVENT_CAS_PUT = 20;
+  EVENT_CAS_GET = 21;
+
+  EVENT_SESSION_OPEN = 30;
+  EVENT_SESSION_REKEY = 31;
+  EVENT_KEY_ROTATION = 32;
+}
+
+message EventHeader {
+  bytes event_id = 1;
+  bytes emitter_node_id = 2;
+  bytes subject_node_id = 3;
+  HybridLogicalTime hlc = 4;
+  EventKind kind = 5;
+  bytes prev_event_hash = 6;
+}
+
+message LedgerEvent {
+  EventHeader header = 1;
+
+  string payload_type = 2;
+  bytes payload = 3;
+  bytes payload_hash = 4;
+
+  bytes event_hash = 5;
+  bytes signature = 6;
+}
+
+message DoubleEntryLink {
+  bytes request_event_hash = 1;
+  bytes receipt_event_hash = 2;
+  string note = 3;
+}
+
+message LedgerSnapshot {
+  map<string, bytes> head_by_node = 1;
+  uint64 generated_at_ms = 2;
+}
+
+service LedgerService {
+  rpc AppendEvents(AppendEventsRequest) returns (AppendEventsResponse);
+  rpc StreamEvents(StreamEventsRequest) returns (stream LedgerEvent);
+  rpc GetSnapshot(GetSnapshotRequest) returns (LedgerSnapshot);
+}
+
+message AppendEventsRequest {
+  repeated LedgerEvent events = 1;
+  repeated DoubleEntryLink links = 2;
+}
+
+message AppendEventsResponse {
+  uint32 accepted = 1;
+  uint32 rejected = 2;
+  repeated bytes rejected_event_ids = 3;
+}
+
+message StreamEventsRequest {
+  map<string, bytes> from_head_by_node = 1;
+}
+
+message GetSnapshotRequest {}

@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package buildnet.v5;
+
+option go_package = "github.com/buildnethq/buildnet/hub/gen/buildnet/v5;buildnetv5";
+
+// Shared timestamp for causal ordering without trusting wall clocks.
+message HybridLogicalTime {
+  uint64 wall_ms = 1;
+  uint32 logical = 2;
+  bytes node_id = 3;
+}
